@@ -72,6 +72,24 @@
       line-height: 24px;
       transition: width 0.5s;
     }
+    .nav-buttons {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .nav-buttons button {
+      font-size: 1rem;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background-color: #00796b;
+      color: white;
+    }
+    .nav-buttons button:hover {
+      background-color: #004d40;
+    }
     #intro {
       text-align: center;
       margin-top: 50px;
@@ -98,13 +116,24 @@
   </div>
   <div id="quiz" style="display: none;"></div>
   <div class="progress-container" id="progress-container">
-    <p>Score: <span id="score">0</span>/250 (<span id="percent">0</span>%)</p>
+    <p id="score-text">Score: <span id="score">0</span>/<span id="total">0</span> (<span id="percent">0</span>%) | Section: <span id="section-score">0</span>/<span id="section-total">0</span> (<span id="section-percent">0</span>%)</p>
     <div class="progress-bar">
       <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div class="nav-buttons">
+      <button onclick="scrollToTop()">⬆ Scroll to Top</button>
+      <button onclick="scrollToBottom()">⬇ Scroll to Bottom</button>
     </div>
   </div>
 
   <script>
+    function scrollToTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function scrollToBottom() {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+
     document.getElementById("start-btn").addEventListener("click", () => {
       document.getElementById("intro").style.display = "none";
       document.getElementById("quiz").style.display = "block";
@@ -118,6 +147,11 @@
     function initializeQuiz(quizData) {
       const quizContainer = document.getElementById("quiz");
       let score = 0;
+      let sectionScore = 0;
+      let sectionTotal = 10;
+      const total = quizData.length;
+      document.getElementById("total").innerText = total;
+      document.getElementById("section-total").innerText = sectionTotal;
 
       quizData.forEach((q, idx) => {
         const questionDiv = document.createElement("div");
@@ -137,7 +171,7 @@
           input.name = `question${idx}`;
           input.value = choiceIdx;
           input.style.marginRight = "10px";
-          input.onclick = () => handleAnswer(idx, choiceIdx, q.correct, q.explanation);
+          input.onclick = () => handleAnswer(idx, choiceIdx, q.correct, q.explanation, q.choices);
           label.appendChild(input);
           label.append(` ${choice}`);
           choicesDiv.appendChild(label);
@@ -152,24 +186,38 @@
         quizContainer.appendChild(questionDiv);
       });
 
-      function handleAnswer(qIndex, selected, correctAnswerText, explanation) {
+      function handleAnswer(qIndex, selected, correctAnswerText, explanation, choices) {
         const feedback = document.getElementById(`feedback${qIndex}`);
         if (feedback.innerHTML !== "") return;
 
         const selectedLabel = document.querySelector(`input[name='question${qIndex}']:checked`).parentNode.textContent.trim();
 
+        let correctLetter = '';
+        for (let i = 0; i < choices.length; i++) {
+          if (choices[i] === correctAnswerText) {
+            correctLetter = String.fromCharCode(97 + i);
+            break;
+          }
+        }
+
         if (selectedLabel === correctAnswerText) {
           score++;
+          if (qIndex < sectionTotal) sectionScore++;
           feedback.innerHTML = `✅ Correct! 🎉 ${explanation}`;
           feedback.style.color = "green";
         } else {
-          feedback.innerHTML = `❌ Incorrect. Correct Answer: ${correctAnswerText}<br>${explanation}`;
+          feedback.innerHTML = `❌ Incorrect. Correct Answer: ${correctLetter}) ${correctAnswerText.slice(3)}<br>${explanation}`;
           feedback.style.color = "red";
         }
 
         document.getElementById("score").innerText = score;
-        const percent = Math.round((score / quizData.length) * 100);
+        document.getElementById("section-score").innerText = sectionScore;
+
+        const percent = Math.round((score / total) * 100);
+        const sectionPercent = Math.round((sectionScore / sectionTotal) * 100);
         document.getElementById("percent").innerText = percent;
+        document.getElementById("section-percent").innerText = sectionPercent;
+
         const progressFill = document.getElementById("progress-fill");
         progressFill.style.width = percent + "%";
         progressFill.innerText = percent + "%";
