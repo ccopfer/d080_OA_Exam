@@ -84,26 +84,36 @@
       line-height: 24px;
       transition: width 0.5s;
     }
-    .progress-nav button {
+    .progress-nav button, .summary-actions button {
       background-color: #003058;
       color: white;
       border: none;
       padding: 8px 16px;
       border-radius: 6px;
-      margin-left: 10px;
-      margin-right: 10px;
+      margin: 5px;
       cursor: pointer;
       box-shadow: 1px 1px 4px rgba(0,0,0,0.1);
     }
     .section {
       padding-bottom: 160px;
     }
+    .summary {
+      margin-top: 40px;
+      background: #fff;
+      border: 2px solid #003058;
+      padding: 20px;
+      border-radius: 12px;
+    }
+    .summary-actions {
+      margin-top: 20px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
   <h1 id="quiz-title">📘 Loading Quiz Title... 📘</h1>
   <div id="start-container" style="text-align:center; margin-top: 50px;">
-    <button id="start-button" style="background-color:#003058;color:white;padding:12px 24px;font-size:1.2rem;border:none;border-radius:8px;cursor:pointer;box-shadow:2px 2px 6px rgba(0,0,0,0.2);">Start Exam</button>
+    <button id="start-button">Start Exam</button>
   </div>
   <div id="quiz" style="display:none;"></div>
   <div class="progress-container" id="progress-container">
@@ -113,6 +123,7 @@
         <div class="progress-bar">
           <div class="progress-fill" id="progress-fill"></div>
         </div>
+        <p>Time: <span id="timer">00:00</span></p>
       </div>
       <div class="progress-nav">
         <button id="prev-button">Previous Section</button>
@@ -120,22 +131,37 @@
       </div>
     </div>
   </div>
+  <div id="review" class="summary" style="display:none;"></div>
 <script>
 let quizData = null;
 let currentSectionIndex = 0;
+let startTime, timerInterval;
 
 fetch('quiz-data.json')
   .then(response => response.json())
   .then(data => {
     quizData = data;
-    if (data.title) {
-      document.title = `WGU: ${data.title} OA Prep Exam`;
-      document.getElementById('quiz-title').innerText = `📘 WGU: ${data.title} OA Prep Exam 📘`;
-    }
-  })
-  .catch(error => {
-    console.error('Failed to load quiz-data.json:', error);
+    document.title = `WGU: ${data.title} OA Prep Exam`;
+    document.getElementById('quiz-title').innerText = `📘 WGU: ${data.title} OA Prep Exam 📘`;
   });
+
+function formatTime(seconds) {
+  const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function startTimer() {
+  startTime = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    document.getElementById('timer').innerText = formatTime(elapsed);
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+}
 
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
@@ -147,74 +173,98 @@ function shuffle(array) {
 function renderQuizSection(index) {
   const quizContainer = document.getElementById('quiz');
   quizContainer.innerHTML = '';
-  if (!quizData || !quizData.sections || !quizData.sections[index]) {
-    quizContainer.innerHTML = '<p>Error loading quiz questions.</p>';
-    return;
-  }
-
   const section = quizData.sections[index];
   const sectionDiv = document.createElement('div');
   sectionDiv.className = 'section';
   sectionDiv.innerHTML = `<h2>Section ${index + 1}: ${section.name}</h2>`;
-
   shuffle(section.questions);
-  section.questions.forEach((questionObj, qIndex) => {
-    const questionDiv = document.createElement('div');
-    questionDiv.className = 'question';
-    const questionId = `section${index}-q${qIndex}`;
-
-    questionDiv.innerHTML = `
-      <p><strong>${questionObj.question}</strong></p>
-      <div class="choices">
-        ${questionObj.choices.map((choice, i) => `
-          <label>
-            <input type="radio" name="${questionId}" value="${i}" onclick="showFeedback('${questionId}', ${i}, ${JSON.stringify(questionObj.correct)}, ${JSON.stringify(questionObj.explanation)})" /> ${choice}
-          </label>
-        `).join('')}
-      </div>
-      <div class="feedback" id="feedback-${questionId}"></div>
-    `;
-    sectionDiv.appendChild(questionDiv);
+  section.questions.forEach((q, i) => {
+    const id = `q-${index}-${i}`;
+    const div = document.createElement('div');
+    div.className = 'question';
+    div.innerHTML = `<p><strong>${q.question}</strong></p>` +
+      q.choices.map((c, ci) => `
+        <label>
+          <input type="radio" name="${id}" value="${ci}" onclick="showFeedback('${id}', ${ci}, ${q.correct.match(/\d+/)[0]-1}, ${JSON.stringify(q.explanation)})" /> ${c}
+        </label>`).join('') +
+      `<div class="feedback" id="feedback-${id}"></div>`;
+    sectionDiv.appendChild(div);
   });
-
   quizContainer.appendChild(sectionDiv);
   updateProgress();
 }
 
-function showFeedback(questionId, selectedIndex, correctAnswer, explanation) {
-  const feedbackDiv = document.getElementById(`feedback-${questionId}`);
-  const isCorrect = selectedIndex === parseInt(correctAnswer.match(/\d+/)?.[0] - 1);
-  feedbackDiv.innerHTML = isCorrect ? `✅ Correct!<br>${explanation}` : `❌ Incorrect.<br>${explanation}`;
+function showFeedback(id, selected, correct, explanation) {
+  const fb = document.getElementById(`feedback-${id}`);
+  const isCorrect = selected === correct;
+  fb.innerHTML = isCorrect ? `✅ Correct!<br>${explanation}` : `❌ Incorrect.<br>${explanation}`;
+  updateProgress();
 }
 
 function updateProgress() {
+  const totalEl = document.getElementById('total');
   const scoreEl = document.getElementById('score');
   const percentEl = document.getElementById('percent');
   const fillEl = document.getElementById('progress-fill');
-  const totalEl = document.getElementById('total');
-  let totalQuestions = 0;
-  let correctAnswers = 0;
-  document.querySelectorAll('.feedback').forEach(fb => {
-    if (fb.innerHTML.includes('✅')) correctAnswers++;
-    if (fb.innerHTML) totalQuestions++;
+  const feedbacks = document.querySelectorAll('.feedback');
+  let total = 0, correct = 0;
+  feedbacks.forEach(f => {
+    if (f.innerHTML.includes('✅')) correct++;
+    if (f.innerHTML) total++;
   });
-  const total = document.querySelectorAll('input[type=radio]:checked').length;
-  const percent = totalQuestions ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
-  scoreEl.textContent = correctAnswers;
+  const percent = total ? Math.round((correct / total) * 100) : 0;
+  totalEl.textContent = total;
+  scoreEl.textContent = correct;
   percentEl.textContent = percent;
   fillEl.style.width = `${percent}%`;
-  totalEl.textContent = totalQuestions;
 }
 
-const startButton = document.getElementById('start-button');
-if (startButton) {
-  startButton.addEventListener('click', () => {
-    document.getElementById('start-container').style.display = 'none';
-    document.getElementById('quiz').style.display = 'block';
-    document.getElementById('progress-container').style.display = 'block';
-    renderQuizSection(currentSectionIndex);
-  });
+function renderReview() {
+  stopTimer();
+  const review = document.getElementById('review');
+  review.innerHTML = '<h2>Final Review</h2>';
+  const summary = document.createElement('div');
+  summary.innerHTML = `Score: ${document.getElementById('score').innerText} / ${document.getElementById('total').innerText}<br>` +
+                      `Time: ${document.getElementById('timer').innerText}`;
+  const missed = Array.from(document.querySelectorAll('.feedback'))
+    .filter(f => f.innerHTML.includes('❌'))
+    .map(f => `<li>${f.parentElement.querySelector('p').innerText}<br>${f.innerHTML}</li>`);
+  review.appendChild(summary);
+  review.innerHTML += `<h3>Missed Questions</h3><ul>${missed.join('')}</ul>`;
+  review.innerHTML += `<div class="summary-actions">
+    <button onclick="location.reload()">Retake Exam</button>
+    <button onclick="window.print()">Print</button>
+    <button onclick="downloadCSV()">Export CSV</button>
+  </div>`;
+  review.style.display = 'block';
 }
+
+function downloadCSV() {
+  let csv = 'Question,Result,Explanation\n';
+  document.querySelectorAll('.question').forEach(q => {
+    const question = q.querySelector('p').innerText.replace(/,/g, '');
+    const fb = q.querySelector('.feedback');
+    const result = fb.innerHTML.includes('✅') ? 'Correct' : 'Incorrect';
+    const explanation = fb.innerText.split('\n').slice(1).join(' ').replace(/,/g, '');
+    csv += `${question},${result},${explanation}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'quiz_results.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+document.getElementById('start-button').addEventListener('click', () => {
+  document.getElementById('start-container').style.display = 'none';
+  document.getElementById('quiz').style.display = 'block';
+  document.getElementById('progress-container').style.display = 'block';
+  renderQuizSection(currentSectionIndex);
+  startTimer();
+});
 
 document.getElementById('prev-button').addEventListener('click', () => {
   if (currentSectionIndex > 0) {
@@ -227,6 +277,9 @@ document.getElementById('next-button').addEventListener('click', () => {
   if (currentSectionIndex < quizData.sections.length - 1) {
     currentSectionIndex++;
     renderQuizSection(currentSectionIndex);
+  } else {
+    document.getElementById('quiz').style.display = 'none';
+    renderReview();
   }
 });
 </script>
